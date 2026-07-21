@@ -1,4 +1,3 @@
-// GÜNCELLEME TESTİ
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,23 +5,49 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyBakCQGI2u5W1R6Yoo8YkY2gM3d0Uq7fuM",
-      authDomain: "botanikajanda.firebaseapp.com",
-      projectId: "botanikajanda",
-      storageBucket: "botanikajanda.firebasestorage.app",
-      messagingSenderId: "982110387949",
-      appId: "1:982110387949:web:1a785db66c00173b0f96e4",
-    ),
-  );
+  try {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyBakCQGI2u5W1R6Yoo8YkY2gM3d0Uq7fuM",
+        authDomain: "botanikajanda.firebaseapp.com",
+        projectId: "botanikajanda",
+        storageBucket: "botanikajanda.firebasestorage.app",
+        messagingSenderId: "982110387949",
+        appId: "1:982110387949:web:1a785db66c00173b0f96e4",
+      ),
+    );
 
-  // Firebase offline desteğini aktif et
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-  );
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+      );
+    } catch (_) {}
 
-  runApp(const BotanikApp());
+    runApp(const BotanikApp());
+  } catch (e) {
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                "SİSTEM BAŞLATILAMADI:\n\n$e",
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class BotanikApp extends StatelessWidget {
@@ -190,7 +215,7 @@ class _LoginGateScreenState extends State<LoginGateScreen> {
   }
 }
 
-// MODELLER (Firebase ID'leri eklendi ve Expense'e category eklendi)
+// MODELLER (İşçi çıkarıldı)
 class Project {
   String? id;
   String name;
@@ -271,30 +296,6 @@ class Plant {
   );
 }
 
-class Worker {
-  String? id;
-  String name;
-  double dailyWage;
-  double totalWagesDue;
-  Worker({
-    this.id,
-    required this.name,
-    required this.dailyWage,
-    this.totalWagesDue = 0.0,
-  });
-  Map<String, dynamic> toMap() => {
-    'name': name,
-    'dailyWage': dailyWage,
-    'totalWagesDue': totalWagesDue,
-  };
-  factory Worker.fromMap(String id, Map<String, dynamic> map) => Worker(
-    id: id,
-    name: map['name'] ?? '',
-    dailyWage: (map['dailyWage'] ?? 0.0).toDouble(),
-    totalWagesDue: (map['totalWagesDue'] ?? 0.0).toDouble(),
-  );
-}
-
 class Sale {
   String? id;
   String plantName;
@@ -337,18 +338,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 1;
   bool _isLoading = true;
 
+  // Filtreleme Seçimleri
+  String _agendaFilter = 'Günlük';
+  String _financeFilter = 'Günlük';
+
   List<Project> projects = [];
   List<Expense> expenses = [];
   List<Plant> plants = [];
-  List<Worker> workers = [];
   List<Sale> sales = [];
   List<String> expenseCategories = [
+    'Yevmiye/Maaş',
     'Gübre',
     'Tohum',
-    'Maaş',
     'Lojistik',
     'Genel',
-  ]; // Varsayılanlar
+  ];
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -361,42 +365,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Future<void> _loadAllDataFromFirebase() async {
     setState(() => _isLoading = true);
     try {
-      // Projeler
       final projSnap = await _db.collection('projects').get();
       projects = projSnap.docs
           .map((d) => Project.fromMap(d.id, d.data()))
           .toList();
 
-      // Giderler
       final expSnap = await _db.collection('expenses').get();
       expenses = expSnap.docs
           .map((d) => Expense.fromMap(d.id, d.data()))
           .toList();
 
-      // Bitkiler
       final plantSnap = await _db.collection('plants').get();
       plants = plantSnap.docs
           .map((d) => Plant.fromMap(d.id, d.data()))
           .toList();
 
-      // İşçiler
-      final workerSnap = await _db.collection('workers').get();
-      workers = workerSnap.docs
-          .map((d) => Worker.fromMap(d.id, d.data()))
-          .toList();
-
-      // Satışlar
       final saleSnap = await _db.collection('sales').get();
       sales = saleSnap.docs.map((d) => Sale.fromMap(d.id, d.data())).toList();
 
-      // Kategoriler
       final catSnap = await _db.collection('settings').doc('categories').get();
       if (catSnap.exists && catSnap.data()!['expenseCategories'] != null) {
         expenseCategories = List<String>.from(
           catSnap.data()!['expenseCategories'],
         );
       } else {
-        // İlk defa çalışıyorsa varsayılanları kaydet
         await _db.collection('settings').doc('categories').set({
           'expenseCategories': expenseCategories,
         });
@@ -408,12 +400,48 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  double get totalRevenue =>
-      projects.fold(0.0, (sum, item) => sum + item.budget) +
-      sales.fold(0.0, (sum, item) => sum + item.totalAmount);
-  double get totalExpenses =>
-      expenses.fold(0.0, (sum, item) => sum + item.amount) +
-      workers.fold(0.0, (sum, item) => sum + item.totalWagesDue);
+  // --- TARİH YARDIMCI FONKSİYONLARI ---
+  DateTime? _parseTurkishDate(String dateStr) {
+    if (dateStr == "Bugün" || dateStr == "Tarih Seçilmedi")
+      return DateTime.now();
+    final parts = dateStr.split(' ');
+    if (parts.length != 3) return null;
+    int? day = int.tryParse(parts[0]);
+    int? year = int.tryParse(parts[2]);
+    const months = [
+      'Ocak',
+      'Şubat',
+      'Mart',
+      'Nisan',
+      'Mayıs',
+      'Haziran',
+      'Temmuz',
+      'Ağustos',
+      'Eylül',
+      'Ekim',
+      'Kasım',
+      'Aralık',
+    ];
+    int month = months.indexOf(parts[1]) + 1;
+    if (day == null || year == null || month == 0) return null;
+    return DateTime(year, month, day);
+  }
+
+  bool _isDateToday(DateTime? date) {
+    if (date == null) return false;
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+  }
+
+  bool _isDateThisWeek(DateTime? date) {
+    if (date == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = date.difference(today).inDays;
+    return diff >= 0 && diff <= 7;
+  }
 
   Future<String> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -454,6 +482,51 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return "";
   }
 
+  // --- SEKMELİ FİLTRE WIDGET'I ---
+  Widget _buildFilterTabs(
+    List<String> options,
+    String selected,
+    Function(String) onChanged,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: options.map((opt) {
+          final isSelected = opt == selected;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(opt),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF1B2E1D)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  opt,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey[700],
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading)
@@ -463,11 +536,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ),
       );
 
+    // İşçiler çıkarıldı, Satış ve Stok ikiye bölündü
     final List<Widget> screens = [
       _buildAjandaTab(),
       _buildMaliTab(),
-      _buildBotanikTab(),
-      _buildIscilerTab(),
+      _buildSatisTab(),
+      _buildStokTab(),
     ];
 
     return Scaffold(
@@ -503,12 +577,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             label: 'Mali Hesap',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.local_florist, size: 26),
-            label: 'Satış/Stok',
+            icon: Icon(Icons.point_of_sale, size: 26),
+            label: 'Satış',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people, size: 26),
-            label: 'İşçiler',
+            icon: Icon(Icons.inventory, size: 26),
+            label: 'Stok',
           ),
         ],
       ),
@@ -522,124 +596,198 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       case 1:
         return 'MALİ DURUM PANELİ';
       case 2:
-        return 'BOTANİK SATIŞ & STOK';
+        return 'SATIŞ YÖNETİMİ';
       case 3:
-        return 'EKİP & YEVMİYE HESABI';
+        return 'BİTKİ STOKLARI';
       default:
         return 'BOTANİK AJANDA';
     }
   }
 
+  // --- AJANDA SEKMESİ ---
   Widget _buildAjandaTab() {
-    if (projects.isEmpty)
-      return const Center(child: Text('Kayıtlı aktif iş bulunamadı.'));
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: projects.length,
-      itemBuilder: (context, index) {
-        final proj = projects[index];
-        return Card(
-          color: Colors.white,
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    final filteredProjects = projects.where((p) {
+      final pDate = _parseTurkishDate(p.date);
+      if (_agendaFilter == 'Günlük') {
+        return _isDateToday(pDate);
+      } else {
+        return _isDateThisWeek(pDate);
+      }
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: _buildFilterTabs(
+            ['Günlük', 'Haftalık'],
+            _agendaFilter,
+            (val) => setState(() => _agendaFilter = val),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              backgroundColor: proj.status == 'Devam Ediyor'
-                  ? Colors.orange[50]
-                  : Colors.green[50],
-              child: Icon(
-                proj.status == 'Devam Ediyor'
-                    ? Icons.engineering
-                    : Icons.check_circle,
-                color: proj.status == 'Devam Ediyor'
-                    ? Colors.orange[800]
-                    : Colors.green[800],
-              ),
-            ),
-            title: Text(
-              proj.name,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 6),
-                Text(
-                  'Tarih: ${proj.date}',
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Durum: ${proj.status}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: proj.status == 'Devam Ediyor'
-                        ? Colors.orange[800]
-                        : Colors.green[800],
-                  ),
-                ),
-              ],
-            ),
-            trailing: PopupMenuButton<String>(
-              onSelected: (val) async {
-                if (val == 'tamamla') {
-                  proj.status = 'Tamamlandı';
-                  await _db.collection('projects').doc(proj.id).update({
-                    'status': 'Tamamlandı',
-                  });
-                  setState(() {});
-                } else if (val == 'duzenle') {
-                  _showEditProjectDialog(proj, index);
-                } else if (val == 'sil') {
-                  await _db.collection('projects').doc(proj.id).delete();
-                  setState(() => projects.removeAt(index));
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'tamamla',
-                  child: Text('Tamamlandı Yap'),
-                ),
-                const PopupMenuItem(value: 'duzenle', child: Text('Düzenle')),
-                const PopupMenuItem(
-                  value: 'sil',
+        ),
+        Expanded(
+          child: filteredProjects.isEmpty
+              ? Center(
                   child: Text(
-                    'Projeyi Sil',
-                    style: TextStyle(color: Colors.red),
+                    'Bu zaman diliminde aktif iş bulunamadı.',
+                    style: TextStyle(color: Colors.grey[600]),
                   ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: filteredProjects.length,
+                  itemBuilder: (context, index) {
+                    final proj = filteredProjects[index];
+                    return Card(
+                      color: Colors.white,
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        leading: CircleAvatar(
+                          backgroundColor: proj.status == 'Devam Ediyor'
+                              ? Colors.orange[50]
+                              : Colors.green[50],
+                          child: Icon(
+                            proj.status == 'Devam Ediyor'
+                                ? Icons.engineering
+                                : Icons.check_circle,
+                            color: proj.status == 'Devam Ediyor'
+                                ? Colors.orange[800]
+                                : Colors.green[800],
+                          ),
+                        ),
+                        title: Text(
+                          proj.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tarih: ${proj.date}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Durum: ${proj.status}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: proj.status == 'Devam Ediyor'
+                                    ? Colors.orange[800]
+                                    : Colors.green[800],
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (val) async {
+                            if (val == 'tamamla') {
+                              proj.status = 'Tamamlandı';
+                              await _db
+                                  .collection('projects')
+                                  .doc(proj.id)
+                                  .update({'status': 'Tamamlandı'});
+                              setState(() {});
+                            } else if (val == 'duzenle') {
+                              _showEditProjectDialog(
+                                proj,
+                                projects.indexOf(proj),
+                              );
+                            } else if (val == 'sil') {
+                              await _db
+                                  .collection('projects')
+                                  .doc(proj.id)
+                                  .delete();
+                              setState(() => projects.remove(proj));
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'tamamla',
+                              child: Text('Tamamlandı Yap'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'duzenle',
+                              child: Text('Düzenle'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'sil',
+                              child: Text(
+                                'Projeyi Sil',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
-          ),
-        );
-      },
+        ),
+      ],
     );
   }
 
+  // --- MALİ HESAP SEKMESİ ---
   Widget _buildMaliTab() {
+    final filteredExpenses = expenses.where((e) {
+      if (_financeFilter == 'Genel') return true;
+      return _isDateToday(_parseTurkishDate(e.date));
+    }).toList();
+
+    final filteredProjects = projects.where((p) {
+      if (_financeFilter == 'Genel') return true;
+      return _isDateToday(_parseTurkishDate(p.date));
+    }).toList();
+
+    final filteredSales = sales.where((s) {
+      if (_financeFilter == 'Genel') return true;
+      return _isDateToday(_parseTurkishDate(s.date));
+    }).toList();
+
+    double currentRevenue =
+        filteredProjects.fold(0.0, (sum, item) => sum + item.budget) +
+        filteredSales.fold(0.0, (sum, item) => sum + item.totalAmount);
+    double currentExpenses = filteredExpenses.fold(
+      0.0,
+      (sum, item) => sum + item.amount,
+    );
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildFilterTabs(
+            ['Günlük', 'Genel'],
+            _financeFilter,
+            (val) => setState(() => _financeFilter = val),
+          ),
           Row(
             children: [
               Expanded(
                 child: _buildOzetKarti(
-                  'TOPLAM GELİR',
-                  '₺${totalRevenue.toStringAsFixed(0)}',
+                  'GELİR (${_financeFilter.toUpperCase()})',
+                  '₺${currentRevenue.toStringAsFixed(0)}',
                   Colors.green[700]!,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildOzetKarti(
-                  'TOPLAM GİDER',
-                  '₺${totalExpenses.toStringAsFixed(0)}',
+                  'GİDER (${_financeFilter.toUpperCase()})',
+                  '₺${currentExpenses.toStringAsFixed(0)}',
                   Colors.red[700]!,
                 ),
               ),
@@ -665,9 +813,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
                 Text(
-                  '₺${(totalRevenue - totalExpenses).toStringAsFixed(0)}',
+                  '₺${(currentRevenue - currentExpenses).toStringAsFixed(0)}',
                   style: TextStyle(
-                    color: (totalRevenue - totalExpenses) >= 0
+                    color: (currentRevenue - currentExpenses) >= 0
                         ? Colors.green[300]
                         : Colors.red[300],
                     fontSize: 22,
@@ -724,110 +872,51 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
-            'PROJELER VE ALINAN HAKEDİŞLER',
-            style: TextStyle(
-              fontSize: 16,
+          Text(
+            'PROJELER VE ALINAN HAKEDİŞLER (${_financeFilter.toUpperCase()})',
+            style: const TextStyle(
+              fontSize: 14,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1B2E1D),
             ),
           ),
           const SizedBox(height: 10),
-          ...projects.map((proj) => _buildProjeItem(proj)),
-          const SizedBox(height: 20),
-          const Text(
-            'GENEL GİDERLER',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1B2E1D),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (expenses.isEmpty)
+          if (filteredProjects.isEmpty)
             const Text(
-              'Kayıtlı gider bulunmamaktadır.',
+              'Kayıt bulunamadı.',
               style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
             )
           else
-            ...expenses.map((exp) => _buildGiderItem(exp)),
+            ...filteredProjects.map((proj) => _buildProjeItem(proj)),
+          const SizedBox(height: 20),
+          Text(
+            'GİDERLER VE ÖDEMELER (${_financeFilter.toUpperCase()})',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1B2E1D),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (filteredExpenses.isEmpty)
+            const Text(
+              'Kayıt bulunamadı.',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+            )
+          else
+            ...filteredExpenses.map((exp) => _buildGiderItem(exp)),
         ],
       ),
     );
   }
 
-  // --- BOTANİK, İŞÇİLER ve YARDIMCI WIDGET'LAR (Mevcut yapıyı korudum, sadece UI gösterimi) ---
-  Widget _buildBotanikTab() {
+  // --- YENİ: SADECE SATIŞ SEKMESİ ---
+  Widget _buildSatisTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'STOKTAKİ BİTKİLER',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1B2E1D),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _showAddPlantDialog(),
-                icon: const Icon(Icons.add, color: Color(0xFF4A703C)),
-                label: const Text(
-                  'Yeni Bitki',
-                  style: TextStyle(
-                    color: Color(0xFF4A703C),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: plants.length,
-            itemBuilder: (context, index) {
-              final plant = plants[index];
-              return Card(
-                color: Colors.white,
-                margin: const EdgeInsets.only(bottom: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  title: Text(
-                    plant.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    'Adet: ${plant.stock}   |   Birim: ₺${plant.price.toStringAsFixed(0)}',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.grey),
-                        onPressed: () => _showEditPlantDialog(plant, index),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () async {
-                          await _db.collection('plants').doc(plant.id).delete();
-                          setState(() => plants.removeAt(index));
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -910,181 +999,71 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  Widget _buildIscilerTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
+  // --- YENİ: SADECE STOK SEKMESİ ---
+  Widget _buildStokTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'EKİP LİSTESİ',
+                'STOKTAKİ BİTKİLER',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1B2E1D),
                 ),
               ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4A703C),
-                ),
-                onPressed: () => _showAddWorkerDialog(),
-                icon: const Icon(
-                  Icons.person_add,
-                  color: Colors.white,
-                  size: 18,
-                ),
+              TextButton.icon(
+                onPressed: () => _showAddPlantDialog(),
+                icon: const Icon(Icons.add, color: Color(0xFF4A703C)),
                 label: const Text(
-                  'Yeni İşçi',
-                  style: TextStyle(color: Colors.white),
+                  'Yeni Bitki',
+                  style: TextStyle(
+                    color: Color(0xFF4A703C),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: workers.length,
+          const SizedBox(height: 8),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: plants.length,
             itemBuilder: (context, index) {
-              final worker = workers[index];
+              final plant = plants[index];
               return Card(
                 color: Colors.white,
-                margin: const EdgeInsets.only(bottom: 12),
+                margin: const EdgeInsets.only(bottom: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: ListTile(
+                  title: Text(
+                    plant.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    'Adet: ${plant.stock}   |   Birim: ₺${plant.price.toStringAsFixed(0)}',
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            worker.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Yevmiye: ₺${worker.dailyWage.toStringAsFixed(0)}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Alacak: ₺${worker.totalWagesDue.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ],
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.grey),
+                        onPressed: () => _showEditPlantDialog(plant, index),
                       ),
-                      Column(
-                        children: [
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFC19A6B),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onPressed: () async {
-                              worker.totalWagesDue += worker.dailyWage;
-                              await _db
-                                  .collection('workers')
-                                  .doc(worker.id)
-                                  .update({
-                                    'totalWagesDue': worker.totalWagesDue,
-                                  });
-                              setState(() {});
-                            },
-                            icon: const Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            label: const Text(
-                              'Yevmiye',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              TextButton(
-                                onPressed: () =>
-                                    _showPaymentDialog(worker, index),
-                                child: const Text(
-                                  'Ödeme Yap',
-                                  style: TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                  size: 18,
-                                ),
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: const Text('İşçiyi Sil'),
-                                      content: Text(
-                                        '${worker.name} ekibinden silinsin mi?',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context),
-                                          child: const Text('Vazgeç'),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          onPressed: () async {
-                                            await _db
-                                                .collection('workers')
-                                                .doc(worker.id)
-                                                .delete();
-                                            setState(
-                                              () => workers.removeAt(index),
-                                            );
-                                            Navigator.pop(context);
-                                          },
-                                          child: const Text(
-                                            'Sil',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
+                        onPressed: () async {
+                          await _db.collection('plants').doc(plant.id).delete();
+                          setState(() => plants.removeAt(index));
+                        },
                       ),
                     ],
                   ),
@@ -1092,8 +1071,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               );
             },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1335,7 +1314,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- DİALOGLAR (Tümü doğrudan Firebase'e yazacak şekilde güncellendi ve kategori seçeneği eklendi) ---
+  // --- DİALOGLAR ---
   void _showAddProjectDialog() {
     final nameController = TextEditingController();
     final budgetController = TextEditingController();
@@ -1522,7 +1501,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- KATEGORİ SİSTEMİ BURAYA EKLENDİ ---
   void _showAddExpenseDialog() {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
@@ -1545,7 +1523,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   TextField(
                     controller: titleController,
                     decoration: const InputDecoration(
-                      labelText: 'Harcama Nedeni',
+                      labelText: 'Harcama / Ödeme Nedeni',
                     ),
                   ),
                   TextField(
@@ -2123,173 +2101,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   },
                   child: const Text(
                     'Güncelle',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showAddWorkerDialog() {
-    final nameController = TextEditingController();
-    final wageController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Yeni İşçi Kaydı'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Adı Soyadı'),
-              ),
-              TextField(
-                controller: wageController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Günlük Yevmiye (₺)',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('İptal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1B2E1D),
-              ),
-              onPressed: () async {
-                if (nameController.text.isNotEmpty &&
-                    wageController.text.isNotEmpty) {
-                  final newWorker = Worker(
-                    name: nameController.text,
-                    dailyWage: double.tryParse(wageController.text) ?? 0.0,
-                  );
-                  final docRef = await _db
-                      .collection('workers')
-                      .add(newWorker.toMap());
-                  newWorker.id = docRef.id;
-                  setState(() => workers.add(newWorker));
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text(
-                'Kaydet',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showPaymentDialog(Worker worker, int index) {
-    final paymentController = TextEditingController();
-    String selectedDateStr = "Tarih Seçilmedi";
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: Text('${worker.name} Ödemesi'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Kalan Alacak: ₺${worker.totalWagesDue.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: paymentController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Ödenen Tutar (₺)',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        selectedDateStr,
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8A9A5B),
-                        ),
-                        onPressed: () async {
-                          String date = await _selectDate(context);
-                          if (date.isNotEmpty)
-                            setModalState(() => selectedDateStr = date);
-                        },
-                        child: const Text(
-                          'Tarih Seç',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('İptal'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1B2E1D),
-                  ),
-                  onPressed: () async {
-                    final double pay =
-                        double.tryParse(paymentController.text) ?? 0.0;
-                    if (pay > 0 && selectedDateStr != "Tarih Seçilmedi") {
-                      worker.totalWagesDue -= pay;
-                      if (worker.totalWagesDue < 0) worker.totalWagesDue = 0;
-
-                      await _db.collection('workers').doc(worker.id).update({
-                        'totalWagesDue': worker.totalWagesDue,
-                      });
-
-                      final newExp = Expense(
-                        title: '${worker.name} Ödemesi',
-                        amount: pay,
-                        date: selectedDateStr,
-                        category: 'Maaş',
-                      );
-                      final docRef = await _db
-                          .collection('expenses')
-                          .add(newExp.toMap());
-                      newExp.id = docRef.id;
-
-                      setState(() => expenses.add(newExp));
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text(
-                    'Öde',
                     style: TextStyle(color: Colors.white),
                   ),
                 ),
